@@ -5,6 +5,7 @@ from logging import getLogger
 
 from ..schemas import RegctlImageInspect
 from ..settings import cached, get_app_settings
+import platform
 
 __all__ = [
     'get_image_inspect',
@@ -14,6 +15,14 @@ __all__ = [
 app_settings = get_app_settings()
 logger = getLogger(__name__)
 
+architecture = platform.machine()
+docker_architecture = None
+if architecture == "x86_64":
+    docker_architecture = "linux/amd64"
+elif architecture == "arm64" or architecture == "aarch64":
+    docker_architecture = "linux/arm64"
+else:
+    logger.error('unable to find docker architecture. unknown arch: %s', architecture)
 
 async def get_image_remote_digest(repo_tag: str, reraise: bool = False, no_cache: bool = False):
     cache_control_max_age_seconds = (timedelta(days=365).total_seconds()
@@ -30,7 +39,9 @@ async def get_image_remote_digest(repo_tag: str, reraise: bool = False, no_cache
             else:
                 image_name, _tag = repo_tag, ''
 
-            cmd = f'regctl image digest "{repo_tag}"'
+            cmd = f'regctl image digest -p linux/arm64 "{repo_tag}"'
+            if docker_architecture:
+                cmd = f'regctl image digest -p {docker_architecture} "{repo_tag}"'
             process = await asyncio.create_subprocess_shell(
                 cmd=cmd,
                 stdout=subprocess.PIPE,
