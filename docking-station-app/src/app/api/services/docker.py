@@ -1,7 +1,9 @@
 import asyncio
+import os
 from datetime import datetime
 from logging import getLogger
 from threading import Thread
+from pathlib import Path
 
 from fastapi import HTTPException
 from python_on_whales import DockerClient, docker
@@ -151,6 +153,15 @@ async def get_image(repository_or_tag: str,
         raise KeyError(repository_or_tag)
     return images[0]
 
+def _fix_configPath(path: Path, services: list[DockerContainer]):
+    if path.as_posix() == "." and services and len(services) > 0:
+        pwd = services[0].labels['com.docker.compose.project.working_dir']
+        if pwd != None:
+            for possible_compose_file in ["compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"]:
+                if os.path.isfile(os.path.join(pwd, possible_compose_file)):
+                    return Path(os.path.join(pwd, possible_compose_file))
+
+    return path
 
 async def list_compose_stacks(filters: DockerContainerListFilters = None,
                               include_stopped: bool = False,
@@ -178,6 +189,9 @@ async def list_compose_stacks(filters: DockerContainerListFilters = None,
         for stack in stacks
         if stack.services
     ]
+
+    for stack in stacks:
+        stack.config_files = [ _fix_configPath(path, stack.services) for path in stack.config_files]
 
     return sorted(
         stacks,
@@ -236,6 +250,13 @@ async def update_compose_stack(stack_name: str,
             status_code=404,
             detail=f'Compose stack {stack_name!r} not found',
         )
+    
+    services = await list_containers(
+            filters={'label': f'com.docker.compose.project={stack.name}'},
+            include_stopped=True,
+            no_cache=True,
+        )
+    stack.config_files = [ _fix_configPath(path, services) for path in stack.config_files]
 
     config_files = stack.config_files
 
@@ -329,6 +350,16 @@ def update_compose_stack_ws(stack_name: str,
         if not stack:
             raise ValueError(f'Compose stack {stack_name!r} not found')
 
+        stack_services = await list_containers(
+            filters={'label': f'com.docker.compose.project={stack.name}'},
+            include_stopped=True,
+            no_cache=True,
+        )
+        stack_service =  next(filter(lambda s: s.name == services[0] , stack_services), None)
+        project_name = None
+        if stack_service != None :
+            project_name = stack_service.labels['com.docker.compose.project']
+        stack.config_files = [ _fix_configPath(path, stack_services) for path in stack.config_files]
         config_files = stack.config_files
 
         if infer_envfile:
@@ -347,10 +378,12 @@ def update_compose_stack_ws(stack_name: str,
         config_file_cmd = ['-f', *config_files] if config_files else []
         env_file_cmd = ['--env-file', env_file] if env_file else []
         pull_cmd = ['--pull', 'always'] if not app_settings.server.dryrun else []
+        prj_cmd = ['-p', project_name] if project_name != None else []
         stdout = subprocess_stream_generator([
             'docker', 'compose',
             *config_file_cmd,
             *env_file_cmd,
+            *prj_cmd,
             'up', '-d',
             *pull_cmd,
             *services,
