@@ -39,7 +39,7 @@ async def get_image_remote_digest(repo_tag: str, reraise: bool = False, no_cache
             else:
                 image_name, _tag = repo_tag, ''
 
-            cmd = f'regctl image digest -p linux/arm64 "{repo_tag}"'
+            cmd = f'regctl image digest "{repo_tag}"'
             if docker_architecture:
                 cmd = f'regctl image digest -p {docker_architecture} "{repo_tag}"'
             process = await asyncio.create_subprocess_shell(
