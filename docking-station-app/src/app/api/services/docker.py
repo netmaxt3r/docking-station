@@ -153,7 +153,7 @@ async def get_image(repository_or_tag: str,
         raise KeyError(repository_or_tag)
     return images[0]
 
-def _fix_configPath(path: Path, services: list[DockerContainer]):
+def _fix_config_path(path: Path, services: list[DockerContainer]):
     if path.as_posix() == "." and services and len(services) > 0:
         pwd = services[0].labels['com.docker.compose.project.working_dir']
         if pwd != None:
@@ -163,6 +163,16 @@ def _fix_configPath(path: Path, services: list[DockerContainer]):
 
     return path
 
+def _fix_stack_config_path(stack: DockerStack, services: list[DockerContainer]):
+    found_compose_yaml = False
+    for path in stack.config_files:
+        if path.as_posix().endswith == ".yml" or path.as_posix().endswith == ".yaml":
+            found_compose_yaml = True
+            break
+    if not found_compose_yaml:
+        stack.config_files = [ _fix_config_path(path, services) for path in stack.config_files]
+    #remove '.'
+    stack.config_files = [ path for path in stack.config_files if not path.as_posix() == "." ]
 async def list_compose_stacks(filters: DockerContainerListFilters = None,
                               include_stopped: bool = False,
                               no_cache: bool = False):
@@ -191,7 +201,7 @@ async def list_compose_stacks(filters: DockerContainerListFilters = None,
     ]
 
     for stack in stacks:
-        stack.config_files = [ _fix_configPath(path, stack.services) for path in stack.config_files]
+        _fix_stack_config_path(stack, stack.services)
 
     return sorted(
         stacks,
@@ -256,7 +266,7 @@ async def update_compose_stack(stack_name: str,
             include_stopped=True,
             no_cache=True,
         )
-    stack.config_files = [ _fix_configPath(path, services) for path in stack.config_files]
+    _fix_stack_config_path(stack, services)
 
     config_files = stack.config_files
 
@@ -359,7 +369,7 @@ def update_compose_stack_ws(stack_name: str,
         project_name = None
         if stack_service != None :
             project_name = stack_service.labels['com.docker.compose.project']
-        stack.config_files = [ _fix_configPath(path, stack_services) for path in stack.config_files]
+        _fix_stack_config_path(stack, stack_services)
         config_files = stack.config_files
 
         if infer_envfile:
