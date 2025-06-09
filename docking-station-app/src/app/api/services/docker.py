@@ -166,7 +166,7 @@ def _fix_config_path(path: Path, services: list[DockerContainer]):
 def _fix_stack_config_path(stack: DockerStack, services: list[DockerContainer]):
     found_compose_yaml = False
     for path in stack.config_files:
-        if path.as_posix().endswith == ".yml" or path.as_posix().endswith == ".yaml":
+        if path.as_posix().endswith(".yml") or path.as_posix().endswith(".yaml"):
             found_compose_yaml = True
             break
     if not found_compose_yaml:
@@ -369,7 +369,9 @@ def update_compose_stack_ws(stack_name: str,
         project_name = None
         if stack_service != None :
             project_name = stack_service.labels['com.docker.compose.project']
+        logger.debug('stack before: %s', stack.config_files)
         _fix_stack_config_path(stack, stack_services)
+        logger.debug('stack after: %s', stack.config_files)
         config_files = stack.config_files
 
         if infer_envfile:
